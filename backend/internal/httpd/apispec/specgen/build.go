@@ -157,6 +157,7 @@ func schemaName(_ reflect.Type, defaultName string) string {
 // by projectOperations(). Add an entry when a new contract type is introduced;
 // the drift test fails until the spec is regenerated, which flags the gap.
 var schemaNames = map[string]string{ //nolint:gosec // Public OpenAPI type names include reset-credit contracts; no credential value is stored here.
+	"ControllersTelemetryIdentityResponse":                 "TelemetryIdentityResponse",
 	"ControllersAgentAccountIDParam":                       "AgentAccountIDParam",
 	"ControllersAgentAccountLoginIDParam":                  "AgentAccountLoginIDParam",
 	"ControllersAgentAccountSessionIDParam":                "AgentAccountSessionIDParam",
@@ -734,6 +735,7 @@ func operations() []operation {
 	ops = append(ops, systemOperations()...)
 	ops = append(ops, identityOperations()...)
 	ops = append(ops, endpointsOperations()...)
+	ops = append(ops, telemetryIdentityOperations()...)
 	ops = append(ops, linkPreviewOperations()...)
 	return ops
 }
@@ -786,6 +788,21 @@ func endpointsOperations() []operation {
 			summary: "List the ways this daemon can currently be reached",
 			resps: []respUnit{
 				{http.StatusOK, controllers.EndpointsResponse{}},
+				{http.StatusNotImplemented, envelope.APIError{}},
+			},
+		},
+	}
+}
+
+// telemetryIdentityOperations declares the phone's telemetry identity sync.
+// Authenticated and outside /api/v1/mobile for the same reason as endpoints.
+func telemetryIdentityOperations() []operation {
+	return []operation{
+		{
+			method: http.MethodGet, path: "/api/v1/telemetry/identity", id: "getTelemetryIdentity", tag: "identity",
+			summary: "Report the desktop telemetry identity and opt-out so a paired phone can adopt it",
+			resps: []respUnit{
+				{http.StatusOK, controllers.TelemetryIdentityResponse{}},
 				{http.StatusNotImplemented, envelope.APIError{}},
 			},
 		},

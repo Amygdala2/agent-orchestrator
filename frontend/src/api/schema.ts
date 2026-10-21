@@ -4089,6 +4089,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/telemetry/identity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Report the desktop telemetry identity and opt-out so a paired phone can adopt it */
+        get: operations["getTelemetryIdentity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/usage/memory/pressure": {
         parameters: {
             query?: never;
@@ -7241,6 +7258,12 @@ export interface components {
             ready: boolean;
             /** @description Individual checks in stable order for the selected probe. */
             requirements: components["schemas"]["SystemRequirement"][];
+        };
+        TelemetryIdentityResponse: {
+            cloudUserId?: string;
+            distinctId: string;
+            githubLogin?: string;
+            optedOut: boolean;
         };
         TrackerIntakeConfig: {
             assignee?: string;
@@ -22519,6 +22542,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Not Implemented */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    getTelemetryIdentity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelemetryIdentityResponse"];
                 };
             };
             /** @description Not Implemented */
