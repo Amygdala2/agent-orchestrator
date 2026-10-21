@@ -13,7 +13,7 @@ import { agentModelsQueryOptions, type AgentModelCatalog } from "../../hooks/use
 import { useAgentManagementMenu } from "../../hooks/useAgentManagementMenu";
 import { useAgentReadinessQuery } from "../../hooks/useAgentReadinessQuery";
 import { useSettings } from "../../hooks/useSettings";
-import { agentModelDisplayLabel, offeredCatalogModels, splitClaudeModels } from "../../lib/agent-model-choices";
+import { agentModelDisplayLabel, offeredCatalogModels, recordedModelName, splitClaudeModels } from "../../lib/agent-model-choices";
 import { agentLabel } from "../../lib/agent-options";
 import { isLaunchableAgent } from "../../lib/agent-select-options";
 import { CHAT_SWITCH_TARGETS, TERMINAL_ONE_SHOT_TARGETS, TERMINAL_SWITCH_TARGETS } from "../../lib/agent-switch-targets";
@@ -180,6 +180,7 @@ export function AgentModelPicker({
 	disabled,
 	loading,
 	loadingModels,
+	savedModel,
 	title,
 	mark,
 	extras,
@@ -200,6 +201,8 @@ export function AgentModelPicker({
 	loading?: boolean;
 	/** The agent is starting again, so its current models are not known yet. */
 	loadingModels?: boolean;
+	/** The model the session last ran, named while its current models load. */
+	savedModel?: string;
 	title?: string;
 	/** A flag on the trigger, such as a substituted model. */
 	mark?: ReactNode;
@@ -246,8 +249,22 @@ export function AgentModelPicker({
 	const live = listsModelVariants(currentHarness) && current.efforts.length === 0 && current.thinking === undefined
 		? variantSource(current.models, current.modelId, current.modelLabel, current.onPickModel && ((variant) => current.onPickModel?.(variant.id)), t)
 		: listsModelVariants(currentHarness) ? { ...current, models: groupModelsByVendor(current.models) } : current;
-	const currentSource: PickerSource = disabled
-		? { ...live, onPickModel: undefined, onPickSetup: undefined, onPickEffort: undefined, onToggleFast: undefined, onToggleThinking: undefined }
+	const { settings: hostSettings } = useSettings(hostId);
+	// The agent's list is shared by every session, so it names the saved model at once.
+	// No saved model means the agent's own default, which Claude Code leaves unset.
+	const savedCatalog = useQuery({ ...agentModelsQueryOptions(currentHarness, projectId, hostId), enabled: Boolean(loadingModels) }).data;
+	// Until the agent reports its own models, its list fills the menu; picks wait for the agent.
+	const starting = loadingModels && savedCatalog && !current.models.some((model) => model.id)
+		? otherAgentSource(
+			currentHarness,
+			offeredCatalogModels(savedCatalog, hostSettings?.harnessDefaults?.[currentHarness]?.disabledModels, [savedModel]),
+			savedModel ? { harness: currentHarness, model: savedModel } : undefined,
+			() => {},
+			t,
+		)
+		: undefined;
+	const currentSource: PickerSource = disabled || starting
+		? { ...(starting ?? live), onPickModel: undefined, onPickSetup: undefined, onPickEffort: undefined, onToggleFast: undefined, onToggleThinking: undefined }
 		: live;
 	// The other agents' model lists load once the menu is open, so search reaches every model.
 	const others = agents.filter((agent) => agent.id !== currentHarness);
@@ -259,7 +276,6 @@ export function AgentModelPicker({
 	const catalogs = useQueries({
 		queries: others.map((agent) => ({ ...agentModelsQueryOptions(agent.id, projectId, hostId), enabled: open })),
 	});
-	const { settings: hostSettings } = useSettings(hostId);
 	// A pending agent offers the models its own session will, so the catalog is narrowed to match.
 	const otherSource = (harness: string, held?: PendingAgentSwitch) => otherAgentSource(
 		harness,
@@ -279,7 +295,11 @@ export function AgentModelPicker({
 	const modelsProblem = !settable || source.models.some((model) => model.id)
 		? undefined
 		: catalogProblem(shownCatalog);
-	const shownModel = pending ? pending.modelLabel ?? agentLabel(pending.harness) : currentSource.modelLabel;
+	const defaultModel = savedCatalog?.models?.find((model) => model.isDefault);
+	const savedLabel = !loadingModels || !savedCatalog ? undefined
+		: savedModel && savedModel !== "default" ? recordedModelName(currentHarness, savedModel, savedCatalog.models ?? [])
+		: defaultModel ? agentModelDisplayLabel(currentHarness, defaultModel.label) : undefined;
+	const shownModel = pending ? pending.modelLabel ?? agentLabel(pending.harness) : savedLabel ?? currentSource.modelLabel;
 	const pendingEffort = pending?.ultracode ? "ultracode" : pending?.effort ?? pending?.shownEffort;
 	const shownEffort = pending
 		? pendingEffort ? formatEffortLabel(pendingEffort, t) : undefined
@@ -351,7 +371,7 @@ export function AgentModelPicker({
 				data-shortcut-target={terminal ? undefined : "model-picker"}
 			>
 				<ProviderMark provider={terminal ? currentHarness : shownHarness} className="size-3.5" />
-				{loadingModels && !pending && !terminal ? (
+				{loadingModels && !savedLabel && !pending && !terminal ? (
 					<span className="flex items-center gap-1.5 text-muted-foreground">
 						<Loader2 aria-hidden="true" className="size-3 animate-spin" />
 						{t("settings.models.loading")}
