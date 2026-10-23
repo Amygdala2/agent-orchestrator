@@ -111,6 +111,8 @@ export type DashboardSession = {
 	provisionError?: string;
 	/** The daemon's start-up stages while a Chat session provisions. Absent from older daemons. */
 	provisionSteps?: SessionProvisionStep[];
+	/** Set while the task's generated branch name is on the way; keep `branch` private meanwhile. */
+	branchNaming?: boolean;
 	isPinned?: boolean;
 	pinnedAt?: string | null;
 	/** Automatically review each new pull-request head. */
@@ -212,6 +214,7 @@ type WireSession = {
 	provisionState?: "provisioning" | "ready" | "failed";
 	provisionError?: string;
 	provisionSteps?: SessionProvisionStep[];
+	branchNaming?: boolean;
 	status?: string | null;
 	kanbanColumn?: string | null;
 	displayStatus?: string | null;
@@ -316,6 +319,7 @@ function mapSession(s: WireSession): DashboardSession {
 		provisionState: s.provisionState,
 		provisionError: s.provisionError,
 		provisionSteps: s.provisionSteps?.length ? s.provisionSteps : undefined,
+		branchNaming: !!s.branchNaming,
 		isPinned: !!s.isPinned,
 		pinnedAt: s.pinnedAt ?? null,
 		autoReviewEnabled: !!s.autoReviewEnabled,
