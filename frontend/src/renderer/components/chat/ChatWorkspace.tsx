@@ -4394,6 +4394,9 @@ const TurnGroup = memo(function TurnGroup({
 		const timer = window.setTimeout(() => setShowSettledStatus(true), 440);
 		return () => window.clearTimeout(timer);
 	}, [group.live]);
+	// Only the run the agent is working in stays open while the turn runs; earlier
+	// runs fold to their summary, so a long turn does not keep every call mounted.
+	const liveRunKey = group.live ? runs.findLast((run) => run.kind === "activities")?.key : undefined;
 	const renderRun = (run: TimelineRun) =>
 		run.kind === "activities" ? (
 			<ActivityRun
@@ -4404,6 +4407,7 @@ const TurnGroup = memo(function TurnGroup({
 				activities={run.items.filter(
 					(item): item is ConversationActivity => item.kind === "activity",
 				)}
+				live={run.key === liveRunKey}
 			/>
 		) : (
 			<TimelineItem
