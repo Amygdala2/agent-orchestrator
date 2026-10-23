@@ -10,8 +10,8 @@ msgstr ""
 msgid "{name} Docs"
 msgstr "{name} 文件"
 
-msgid "{title} | Agent Orchestrator Docs"
-msgstr "{title} | Agent Orchestrator 文件"
+msgid "{title} | Orchestrator.inc Docs"
+msgstr "{title} | Orchestrator.inc 文件"
 
 msgctxt "sidebar section"
 msgid "Agents"
@@ -62,6 +62,9 @@ msgstr "複製此章節的連結"
 
 msgid "Copy Markdown"
 msgstr "複製 Markdown"
+
+msgid "Docs"
+msgstr "文件"
 
 msgctxt "sidebar section"
 msgid "Getting Started"

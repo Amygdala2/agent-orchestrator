@@ -10,8 +10,8 @@ msgstr ""
 msgid "{name} Docs"
 msgstr "{name}-documentatie"
 
-msgid "{title} | Agent Orchestrator Docs"
-msgstr "{title} | Agent Orchestrator-documentatie"
+msgid "{title} | Orchestrator.inc Docs"
+msgstr "{title} | Orchestrator.inc-documentatie"
 
 msgctxt "sidebar section"
 msgid "Agents"
@@ -62,6 +62,9 @@ msgstr "Link naar deze sectie kopiëren"
 
 msgid "Copy Markdown"
 msgstr "Markdown kopiëren"
+
+msgid "Docs"
+msgstr "Documentatie"
 
 msgctxt "sidebar section"
 msgid "Getting Started"

@@ -10,8 +10,8 @@ msgstr ""
 msgid "{name} Docs"
 msgstr "Tài liệu {name}"
 
-msgid "{title} | Agent Orchestrator Docs"
-msgstr "{title} | Tài liệu Agent Orchestrator"
+msgid "{title} | Orchestrator.inc Docs"
+msgstr "{title} | Tài liệu Orchestrator.inc"
 
 msgctxt "sidebar section"
 msgid "Agents"
@@ -62,6 +62,9 @@ msgstr "Sao chép liên kết đến mục này"
 
 msgid "Copy Markdown"
 msgstr "Sao chép Markdown"
+
+msgid "Docs"
+msgstr "Tài liệu"
 
 msgctxt "sidebar section"
 msgid "Getting Started"
