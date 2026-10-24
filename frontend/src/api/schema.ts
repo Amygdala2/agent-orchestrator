@@ -5383,6 +5383,7 @@ export interface components {
         };
         ConversationPlanResponse: {
             explanation?: string;
+            spansTurns?: boolean;
             steps: components["schemas"]["ConversationPlanStepResponse"][];
         };
         ConversationPlanStepResponse: {

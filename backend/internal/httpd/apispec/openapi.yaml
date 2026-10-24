@@ -15637,6 +15637,8 @@ components:
       properties:
         explanation:
           type: string
+        spansTurns:
+          type: boolean
         steps:
           items:
             $ref: '#/components/schemas/ConversationPlanStepResponse'
