@@ -442,7 +442,6 @@ export function SessionView({ sessionId, cloudOrgId, projectId, hostId }: Sessio
 	// under someone who is watching the agent work.
 	useCloudSessionPresence(session?.cloud?.orgId, session?.cloud ? session.id : undefined, Boolean(session?.cloud));
 	const { draftBoundaries: chatDraftBoundaries, confirmUnsafeDraftLeave } = interfaceUi;
-	const developerMode = useUiStore((state) => state.developerMode);
 	const remoteHostsEnabled = useUiStore((state) => state.remoteHosts);
 	const setRemoteHosts = useUiStore((state) => state.setRemoteHosts);
 	useBlocker({
@@ -451,7 +450,7 @@ export function SessionView({ sessionId, cloudOrgId, projectId, hostId }: Sessio
 		shouldBlockFn: async () => {
 			const decision = await confirmUnsafeDraftLeave();
 			if (decision.kind === "cancelled") {
-				if (hostId && developerMode && !remoteHostsEnabled) setRemoteHosts(true);
+				if (hostId && !remoteHostsEnabled) setRemoteHosts(true);
 				return true;
 			}
 			if (decision.kind === "confirmed") {
