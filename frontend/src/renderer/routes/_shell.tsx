@@ -20,7 +20,6 @@ import { GlobalToast } from "../components/GlobalToast";
 import { SettingsPane, SettingsProvider } from "../components/SettingsDialog";
 import { KeyboardShortcutsDialog } from "../components/KeyboardShortcutsDialog";
 import { QuitConfirmDialog } from "../components/QuitConfirmDialog";
-import { KeyboardShortcutsSettingsDialog } from "../components/settings/KeyboardShortcutsSettingsDialog";
 import { ShellTopbar } from "../components/ShellTopbar";
 import { SessionTopbarProvider } from "../components/SessionTopbarPortal";
 import { OrchestratorReplacementDialog } from "../components/OrchestratorReplacementDialog";
@@ -392,10 +391,9 @@ function ShellLayout() {
 	// Seeded to the current value so a mount never opens a terminal unasked.
 	const handledShellNonceRef = useRef(newShellTerminalNonce);
 	const [isKeyboardShortcutsOpen, setIsKeyboardShortcutsOpen] = useState(false);
-	const [isKeyboardShortcutsSettingsOpen, setIsKeyboardShortcutsSettingsOpen] = useState(false);
 	const customizeKeyboardShortcuts = useCallback(() => {
 		setIsKeyboardShortcutsOpen(false);
-		setIsKeyboardShortcutsSettingsOpen(true);
+		useUiStore.getState().openGlobalSettings("shortcuts", { preserveProject: true });
 	}, []);
 	const routeParams = useParams({ strict: false }) as { hostId?: string; projectId?: string; sessionId?: string };
 	const routeParamsRef = useRef(routeParams);
@@ -1422,10 +1420,6 @@ const replacementErrorCount = Object.keys(orchestratorReplacementErrors).length;
 					open={isKeyboardShortcutsOpen}
 					onOpenChange={setIsKeyboardShortcutsOpen}
 					onCustomize={customizeKeyboardShortcuts}
-				/>
-				<KeyboardShortcutsSettingsDialog
-					open={isKeyboardShortcutsSettingsOpen}
-					onOpenChange={setIsKeyboardShortcutsSettingsOpen}
 				/>
 				<TerminalCacheProvider
 					daemonReady={daemonStatus.state === "ready"}
