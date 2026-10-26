@@ -39,6 +39,12 @@ vi.mock("../hooks/useCloudArtifacts", async (importOriginal) => ({
 	...await importOriginal<typeof import("../hooks/useCloudArtifacts")>(),
 	useCloudArtifactAccess: (session: Pick<WorkspaceSession, "cloud">) => ({ data: session.cloud ? "https://cp.test/artifact-files/token/" : undefined }),
 }));
+vi.mock("./CloudArtifactFrame", () => ({
+	CloudArtifactFrame: ({ title, url }: { title: string; url: string }) => <iframe data-testid="cloud-artifact-preview" title={title} src={url} />,
+}));
+vi.mock("./ArtifactFileView", () => ({
+	ArtifactFileView: ({ cloud, path, rawUrl, readOnly }: { cloud?: boolean; path: string; rawUrl?: string; readOnly?: boolean }) => <div data-testid="artifact-file-preview" data-cloud={cloud} data-path={path} data-raw-url={rawUrl} data-read-only={readOnly} />,
+}));
 vi.mock("../hooks/useAgentReadinessQuery", () => ({ useAgentReadinessQuery: () => ({ data: { agents: mocks.agents } }) }));
 vi.mock("../lib/api-client", async (importOriginal) => ({
 	...await importOriginal<typeof import("../lib/api-client")>(),
@@ -250,6 +256,25 @@ describe("ArtifactsView", () => {
 		await waitFor(() => expect(mocks.deleteCloudArtifact).toHaveBeenCalledWith("org-1", "cloud-1", "notes.md"));
 	});
 
+
+	it.each(["html", "markdown"] as const)("previews a cloud %s artifact using cloud access", async (kind) => {
+		const name = kind === "html" ? "report.html" : "notes.md";
+		const cloud = session("cloud-1", "Cloud notes", [{ name, kind, updatedAt: "2026-10-11T10:00:00Z" }]);
+		cloud.cloud = { orgId: "org-1" };
+		mocks.workspaces = [{ id: "cloud-project", name: "Cloud project", path: "", kind: CLOUD_PROJECT_KIND, cloudOrgId: "org-1", sessions: [cloud] }];
+		renderView();
+		await userEvent.click(screen.getByRole("button", { name: new RegExp(`^${name}`) }));
+		const dialog = screen.getByRole("dialog", { name });
+		if (kind === "html") {
+			expect(within(dialog).getByTestId("cloud-artifact-preview")).toHaveAttribute("src", `https://cp.test/artifact-files/token/${name}?v=2026-10-11T10%3A00%3A00Z`);
+		} else {
+			const preview = within(dialog).getByTestId("artifact-file-preview");
+			expect(preview).toHaveAttribute("data-cloud", "true");
+			expect(preview).toHaveAttribute("data-read-only", "true");
+			expect(preview).toHaveAttribute("data-raw-url", `https://cp.test/artifact-files/token/${name}?v=2026-10-11T10%3A00%3A00Z`);
+		}
+	});
+
 	it("pins and unpins an artifact across sections and remembers the pin on return", async () => {
 		const user = userEvent.setup();
 		const { unmount } = renderView();
@@ -423,11 +448,15 @@ describe("ArtifactsView", () => {
 		expect(container.querySelector("a, script")).toBeNull();
 	});
 
-	it("opens the source session and hands it the clicked artifact", async () => {
+	it("previews the artifact on this page before opening its source session", async () => {
 		const user = userEvent.setup();
 		renderView();
 
 		await user.click(within(screen.getByRole("region", { name: "agent-orchestrator" })).getByRole("button", { name: /^artifacts-user-flow\.html/ }));
+		const preview = within(screen.getByRole("dialog", { name: "artifacts-user-flow.html" }));
+		expect(mocks.navigate).not.toHaveBeenCalled();
+		expect(preview.getByText("agent-orchestrator · Design the Artifacts entry point")).toBeInTheDocument();
+		await user.click(preview.getByRole("button", { name: "Open in session" }));
 
 		expect(mocks.navigate).toHaveBeenCalledWith({ to: "/projects/$projectId/sessions/$sessionId", params: { projectId: "ao", sessionId: "ao-1" } });
 		expect(useUiStore.getState().workspaceFileOpenRequest).toMatchObject({
@@ -442,8 +471,94 @@ describe("ArtifactsView", () => {
 		renderView();
 
 		await user.click(within(screen.getByRole("region", { name: "Scratchpad" })).getByRole("button", { name: /^caching-options\.md/ }));
+		expect(mocks.navigate).not.toHaveBeenCalled();
+		await user.click(within(screen.getByRole("dialog", { name: "caching-options.md" })).getByRole("button", { name: "Open in session" }));
 
 		expect(mocks.navigate).toHaveBeenCalledWith({ to: "/sessions/$sessionId", params: { sessionId: "standalone-1" } });
+	});
+
+	it.each(["report.pdf", "metrics.csv", "metrics.tsv", "flow.mmd", "flow.mermaid", "notes.md", "diagram.svg", "recording.mp4", "audio.mp3"])("opens %s in the shared file viewer", async (name) => {
+		const file = session("ao-formats", "Preview formats", [{ name, kind: "file", updatedAt: "2026-10-11T10:00:00Z" }]);
+		file.artifactFiles![0].rawUrl = `http://127.0.0.1:3002/${name}`;
+		mocks.workspaces = [{ id: "ao", name: "AO", path: "/code/ao", sessions: [file] }];
+		renderView();
+
+		await userEvent.click(screen.getByRole("button", { name: new RegExp(`^${name}`) }));
+		const preview = within(screen.getByRole("dialog", { name })).getByTestId("artifact-file-preview");
+		expect(preview).toHaveAttribute("data-path", name);
+		expect(preview).toHaveAttribute("data-raw-url", file.artifactFiles![0].rawUrl);
+		expect(preview).toHaveAttribute("data-read-only", "true");
+		expect(preview).not.toHaveAttribute("data-cloud", "true");
+	});
+
+	it("opens a session directly from the card arrow without opening a modal", async () => {
+		const user = userEvent.setup();
+		renderView();
+		const project = within(screen.getByRole("region", { name: "agent-orchestrator" }));
+		expect(project.queryByRole("button", { name: "Delete artifact: pricing.md" })).not.toBeInTheDocument();
+		await user.click(project.getByRole("button", { name: "Open in session: pricing.md" }));
+		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+		expect(mocks.navigate).toHaveBeenCalledWith({ to: "/projects/$projectId/sessions/$sessionId", params: { projectId: "ao", sessionId: "ao-2" } });
+	});
+
+	it("keeps pin and delete in the modal menu without duplicating Open in session there", async () => {
+		const user = userEvent.setup();
+		renderView();
+		await user.click(within(screen.getByRole("region", { name: "agent-orchestrator" })).getByRole("button", { name: /^pricing\.md/ }));
+		const modal = within(screen.getByRole("dialog", { name: "pricing.md" }));
+		expect(modal.queryByRole("button", { name: "Pin artifact: pricing.md" })).not.toBeInTheDocument();
+		expect(modal.getByRole("button", { name: "Open in session" })).toBeInTheDocument();
+		await user.click(modal.getByRole("button", { name: "More actions: pricing.md" }));
+		expect(screen.queryByRole("menuitem", { name: "Open in session" })).not.toBeInTheDocument();
+		expect(screen.getByRole("menuitem", { name: "Delete artifact" })).toBeInTheDocument();
+		await user.click(screen.getByRole("menuitem", { name: "Pin artifact" }));
+		expect(useArtifactsViewStore.getState().pinnedArtifactIds).toHaveLength(1);
+		expect(mocks.navigate).not.toHaveBeenCalled();
+	});
+
+	it("closes a preview with Escape and restores focus without navigating", async () => {
+		const user = userEvent.setup();
+		renderView();
+		const trigger = within(screen.getByRole("region", { name: "agent-orchestrator" })).getByRole("button", { name: /^pricing\.md/ });
+		await user.click(trigger);
+		expect(screen.getByRole("dialog", { name: "pricing.md" })).toBeInTheDocument();
+		await user.keyboard("{Escape}");
+		await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+		expect(mocks.navigate).not.toHaveBeenCalled();
+		expect(trigger).toHaveFocus();
+	});
+
+	it("opens the same preview from list view without navigating", async () => {
+		const user = userEvent.setup();
+		renderView();
+		await user.click(screen.getByRole("button", { name: "List view" }));
+		await user.click(within(screen.getByRole("region", { name: "Recent" })).getByRole("button", { name: /^pricing\.md/ }));
+		expect(screen.getByRole("dialog", { name: "pricing.md" })).toBeInTheDocument();
+		expect(mocks.navigate).not.toHaveBeenCalled();
+		await user.click(screen.getByRole("button", { name: "Close" }));
+		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+	});
+
+	it("opens a pinned artifact in a preview without navigating", async () => {
+		const user = userEvent.setup();
+		renderView();
+		await user.click(within(screen.getByRole("region", { name: "agent-orchestrator" })).getByRole("button", { name: "Pin artifact: pricing.md" }));
+		await user.click(within(screen.getByRole("region", { name: "Pinned" })).getByRole("button", { name: /^pricing\.md/ }));
+		expect(screen.getByRole("dialog", { name: "pricing.md" })).toBeInTheDocument();
+		expect(mocks.navigate).not.toHaveBeenCalled();
+	});
+
+	it("previews HTML on its isolated origin inside the modal", async () => {
+		const user = userEvent.setup();
+		const html = session("ao-html", "Design review", [{ name: "page.html", kind: "html", updatedAt: "2026-10-11T10:00:00Z" }]);
+		html.artifactFiles![0].inlineUrl = "http://ao-inline-artifact.ao-html.localhost:3002/page.html";
+		mocks.workspaces = [{ id: "ao", name: "AO", path: "/code/ao", sessions: [html] }];
+		renderView();
+		await user.click(within(screen.getByRole("region", { name: "AO" })).getByRole("button", { name: /^page\.html/ }));
+		const frame = screen.getByRole("dialog", { name: "page.html" }).querySelector("iframe");
+		expect(frame).toHaveAttribute("src", html.artifactFiles![0].inlineUrl);
+		expect(frame).toHaveAttribute("sandbox", "allow-scripts allow-same-origin");
+		expect(mocks.navigate).not.toHaveBeenCalled();
 	});
 
 	it("offers New artifact beside the filters with the same Scratchpad and project menu", async () => {

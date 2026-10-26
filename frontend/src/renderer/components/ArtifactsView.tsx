@@ -21,6 +21,7 @@ import { useArtifactsViewStore, type ArtifactViewMode } from "../stores/artifact
 import { useUiStore } from "../stores/ui-store";
 import { CLOUD_PROJECT_KIND, STANDALONE_WORKSPACE_ID, type WorkspaceSummary } from "../types/workspace";
 import { ArtifactActionsMenu } from "./ArtifactActionsMenu";
+import { ArtifactPreviewModal } from "./ArtifactPreviewModal";
 import { ArtifactThumbnail } from "./ArtifactThumbnail";
 import { TopbarButton, topbarProjectLabelClass } from "./TopbarButton";
 import { Button } from "./ui/button";
@@ -53,6 +54,8 @@ export function ArtifactsView() {
 	const groups = useMemo(() => groupArtifactsByProject(workspaces ?? []), [workspaces]);
 	const [query, setQuery] = useState("");
 	const [projectId, setProjectId] = useState("");
+	const [preview, setPreview] = useState<{ row: ArtifactRow; projectName: string } | null>(null);
+	const openPreview = (row: ArtifactRow, projectName: string) => setPreview({ row, projectName });
 	const view = useArtifactsViewStore((state) => state.view);
 	const setView = useArtifactsViewStore((state) => state.setView);
 	const pinnedArtifactIds = useArtifactsViewStore((state) => state.pinnedArtifactIds);
@@ -197,12 +200,12 @@ export function ArtifactsView() {
 								<div>
 									{pinnedCards.length > 0 ? <ArtifactSection sectionId="pinned" name={t("artifacts.pinned")} icon={Pin} view={view}>
 										{pinnedCards.map(({ row, projectName }) => (
-											<ArtifactCard key={artifactKey(row)} row={row} projectName={projectName} view={view} showProjectName previewLive={livePreviewSections.get(artifactKey(row)) === "pinned"} />
+											<ArtifactCard key={artifactKey(row)} row={row} projectName={projectName} view={view} showProjectName previewLive={livePreviewSections.get(artifactKey(row)) === "pinned"} onPreview={openPreview} />
 										))}
 									</ArtifactSection> : null}
 									{showProjectSections ? <ArtifactSection sectionId="recent" name={t("artifacts.recent")} icon={Clock} view={view}>
 										{cards.slice(0, 3).map(({ row, projectName }) => (
-											<ArtifactCard key={`${row.sessionId}:${row.path}`} row={row} projectName={projectName} view={view} showProjectName previewLive={livePreviewSections.get(artifactKey(row)) === "recent"} />
+											<ArtifactCard key={`${row.sessionId}:${row.path}`} row={row} projectName={projectName} view={view} showProjectName previewLive={livePreviewSections.get(artifactKey(row)) === "recent"} onPreview={openPreview} />
 										))}
 									</ArtifactSection> : null}
 									{visibleGroups.map((group) => {
@@ -218,7 +221,7 @@ export function ArtifactsView() {
 												updatedAt={groups.find((project) => project.id === group.id)?.rows[0]?.updatedAt}
 											>
 												{group.rows.map((row) => (
-													<ArtifactCard key={`${row.sessionId}:${row.path}`} row={row} projectName={projectName} view={view} showProjectName={!showProjectSections} previewLive={livePreviewSections.get(artifactKey(row)) === `project:${group.id}`} />
+													<ArtifactCard key={`${row.sessionId}:${row.path}`} row={row} projectName={projectName} view={view} showProjectName={!showProjectSections} previewLive={livePreviewSections.get(artifactKey(row)) === `project:${group.id}`} onPreview={openPreview} />
 												))}
 											</ArtifactSection>
 										);
@@ -232,6 +235,7 @@ export function ArtifactsView() {
 					</ScrollArea.Scrollbar>
 				</main>
 			</ScrollArea.Root>
+			<ArtifactPreviewModal artifact={preview?.row ?? null} projectName={preview?.projectName ?? ""} onClose={() => setPreview(null)} />
 		</div>
 	);
 }
@@ -284,7 +288,7 @@ function ArtifactSection({ sectionId, name, icon: Icon, updatedAt, children, vie
 	);
 }
 
-function ArtifactCard({ row, projectName, view, showProjectName = false, previewLive = true }: { row: ArtifactRow; projectName: string; view: ArtifactViewMode; showProjectName?: boolean; previewLive?: boolean }) {
+function ArtifactCard({ row, projectName, view, showProjectName = false, previewLive = true, onPreview }: { row: ArtifactRow; projectName: string; view: ArtifactViewMode; showProjectName?: boolean; previewLive?: boolean; onPreview: (row: ArtifactRow, projectName: string) => void }) {
 	const { t } = useTranslation();
 	const id = artifactKey(row);
 	const pinned = useArtifactsViewStore((state) => state.pinnedArtifactIds.includes(id));
@@ -294,6 +298,9 @@ function ArtifactCard({ row, projectName, view, showProjectName = false, preview
 	const KindIcon = row.kind === "html" ? BrowserIcon : row.kind === "markdown" ? FileText : File;
 
 	const open = () => {
+		onPreview(row, projectName);
+	};
+	const openInSession = () => {
 		requestWorkspaceFileOpen(row.sessionId, row.path, undefined, "artifact");
 		navigateToSession(row.projectId, row.sessionId);
 	};
@@ -321,7 +328,7 @@ function ArtifactCard({ row, projectName, view, showProjectName = false, preview
 							artifact={row}
 							session={{ id: row.sessionId, cloud: row.cloud }}
 							iconOnly
-							showDeleteButton
+							onOpenInSession={openInSession}
 							pinned={pinned}
 							onTogglePin={() => togglePinnedArtifact(id)}
 							className="bg-[var(--solid-bg-secondary,var(--color-bg-secondary))] hover:bg-[var(--solid-accent,var(--accent))] dark:hover:bg-[var(--solid-accent,var(--accent))] transition-none duration-0 [@media(hover:hover)]:opacity-0 group-hover/artifact:opacity-100 group-focus-within/artifact:opacity-100 data-[state=open]:opacity-100"
@@ -366,7 +373,7 @@ function ArtifactCard({ row, projectName, view, showProjectName = false, preview
 					artifact={row}
 					session={{ id: row.sessionId, cloud: row.cloud }}
 					iconOnly
-					showDeleteButton
+					onOpenInSession={openInSession}
 					pinned={pinned}
 					onTogglePin={() => togglePinnedArtifact(id)}
 					className="bg-[var(--solid-bg-secondary,var(--color-bg-secondary))] hover:bg-[var(--solid-accent,var(--accent))] dark:hover:bg-[var(--solid-accent,var(--accent))] transition-none duration-0 [@media(hover:hover)]:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100"
