@@ -44,7 +44,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { useAgentAccountLabel } from "../hooks/useAgentAccounts";
 import { useBrowserView } from "../hooks/useBrowserView";
 import { useFileAnnotation } from "../hooks/useFileAnnotation";
-import { useOpenArtifactPreview } from "../hooks/useOpenArtifactPreview";
 import {
 	adoptedShellHandle,
 	useCloseShellTerminal,
@@ -1619,17 +1618,12 @@ export function SessionView({ sessionId, cloudOrgId, projectId, hostId }: Sessio
 			};
 		});
 	}, [uiSessionId]);
-	const openArtifactPreview = useOpenArtifactPreview(session?.id, session?.hostId);
 	useEffect(() => {
 		if (!workspaceFileOpenRequest || !session) return;
 		if (sessionUiKey(workspaceFileOpenRequest.sessionId, workspaceFileOpenRequest.hostId) !== uiSessionId) return;
 		const { line, nonce, path, source } = workspaceFileOpenRequest;
 		if (source === "artifact") {
-			// Same routing as the Summary panel's artifact rows: HTML opens in
-			// the Browser panel, everything else in the Artifacts view.
-			const artifact = session.artifactFiles?.find((file) => file.path === path);
-			if (artifact?.kind === "html" && artifact.previewUrl) openArtifactPreview(artifact.previewUrl);
-			else handleOpenArtifact({ path });
+			handleOpenArtifact({ path });
 		} else if (session.cloud) {
 			prepareFilesInspector();
 			openCenterFile(path, { mode: "file" });
@@ -1641,7 +1635,6 @@ export function SessionView({ sessionId, cloudOrgId, projectId, hostId }: Sessio
 		clearWorkspaceFileOpenRequest,
 		handleOpenArtifact,
 		handleOpenFile,
-		openArtifactPreview,
 		openCenterFile,
 		prepareFilesInspector,
 		session,

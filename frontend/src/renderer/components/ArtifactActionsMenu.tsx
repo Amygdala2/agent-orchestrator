@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { ArrowUpRight, ChevronDown, Copy, Download, Ellipsis, FolderOpen, Pin, PinOff, SquareTerminal, Trash2 } from "lucide-react";
+import { ArrowUpRight, ChevronDown, Copy, Download, Ellipsis, FolderOpen, Pencil, Pin, PinOff, SquareTerminal, Trash2 } from "lucide-react";
 import type { OpenArtifactsTargetId } from "../../shared/editor-handoff";
 import { useOpenSessionArtifacts } from "../hooks/useEditorHandoff";
 import { CLOUD_TEXT_ARTIFACT, deleteSessionArtifactFile, sessionArtifactFileQueryOptions } from "../hooks/useSessionWorkspaceFiles";
@@ -40,6 +40,8 @@ export function ArtifactActionsMenu({
 	hostId,
 	session,
 	iconOnly = false,
+	variant = "default",
+	onEdit,
 	pinInMenu = false,
 	pinned = false,
 	onTogglePin,
@@ -47,12 +49,15 @@ export function ArtifactActionsMenu({
 	onDeleted,
 	errorClassName,
 	className,
+	children,
 }: {
 	artifact: Pick<SessionArtifact, "name" | "path" | "rawUrl" | "updatedAt">;
 	downloadUrl?: string;
 	hostId?: string;
 	session: Pick<WorkspaceSession, "id" | "cloud">;
 	iconOnly?: boolean;
+	variant?: "default" | "sidebar";
+	onEdit?: () => void;
 	pinInMenu?: boolean;
 	pinned?: boolean;
 	onTogglePin?: () => void;
@@ -60,14 +65,18 @@ export function ArtifactActionsMenu({
 	onDeleted?: () => void;
 	errorClassName?: string;
 	className?: string;
+	children?: ReactNode;
 }) {
 	const { t } = useTranslation();
 	const queryClient = useQueryClient();
 	const open = useOpenSessionArtifacts();
 	const [copyError, setCopyError] = useState("");
 	const [confirmingDelete, setConfirmingDelete] = useState(false);
+	const [menuOpen, setMenuOpen] = useState(false);
+	const actionClassName = cn(className, menuOpen && "opacity-100 [@media(hover:hover)]:opacity-100");
 	// The artifact directory is on this machine only for a local session.
 	const local = !hostId && !session.cloud;
+	const sidebar = variant === "sidebar";
 	const { client: cloudClient } = useCloudCp(Boolean(session.cloud));
 	const access = useCloudArtifactAccess(session, Boolean(session.cloud) && !downloadUrl);
 	const cloudFileUrl = session.cloud
@@ -135,7 +144,7 @@ export function ArtifactActionsMenu({
 					iconOnly
 						? "text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60"
 						: "min-w-0 gap-1 px-1.5 font-normal",
-					className,
+					actionClassName,
 				)}
 				size={iconOnly ? "icon-sm" : "sm"}
 				title={iconOnly ? undefined : artifact.path}
@@ -153,13 +162,35 @@ export function ArtifactActionsMenu({
 	);
 	return (
 		<>
+			{sidebar && !session.cloud ? (
+				<>
+					{onEdit && !fileMediaKind(artifact.path) ? (
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button aria-label={`${t("files.editFile")}: ${artifact.name}`} className={cn("text-muted-foreground hover:text-foreground", actionClassName)} onClick={onEdit} size="icon-sm" type="button" variant="ghost">
+									<Pencil aria-hidden="true" className="size-icon-sm" />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent side="bottom">{t("files.editFile")}</TooltipContent>
+						</Tooltip>
+					) : null}
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Button aria-label={`${t("artifacts.delete")}: ${artifact.name}`} className={cn("text-muted-foreground hover:text-destructive", actionClassName)} onClick={confirmDelete} size="icon-sm" type="button" variant="ghost">
+								<Trash2 aria-hidden="true" className="size-icon-sm" />
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent side="bottom">{t("artifacts.delete")}</TooltipContent>
+					</Tooltip>
+				</>
+			) : null}
 			{onTogglePin && !pinInMenu ? (
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<Button
 							aria-label={`${t(pinned ? "artifacts.unpin" : "artifacts.pin")}: ${artifact.name}`}
 							aria-pressed={pinned}
-							className={cn("text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60", className, pinned && "text-foreground")}
+							className={cn("text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60", actionClassName, pinned && "text-foreground")}
 							onClick={onTogglePin}
 							size="icon-sm"
 							type="button"
@@ -176,7 +207,7 @@ export function ArtifactActionsMenu({
 					<TooltipTrigger asChild>
 						<Button
 							aria-label={`${t("artifacts.openInSession")}: ${artifact.name}`}
-							className={cn("text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60", className)}
+							className={cn("text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60", actionClassName)}
 							onClick={onOpenInSession}
 							size="icon-sm"
 							type="button"
@@ -188,7 +219,7 @@ export function ArtifactActionsMenu({
 					<TooltipContent side="bottom">{t("artifacts.openInSession")}</TooltipContent>
 				</Tooltip>
 			) : null}
-			<DropdownMenu>
+			{!sidebar || local ? <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
 				{iconOnly ? (
 					<Tooltip>
 						<TooltipTrigger asChild>
@@ -198,6 +229,8 @@ export function ArtifactActionsMenu({
 					</Tooltip>
 				) : menuTrigger}
 				<DropdownMenuContent align={iconOnly ? "end" : "start"} className="min-w-44" data-browser-native-overlay="true">
+					{children}
+					{children ? <DropdownMenuSeparator /> : null}
 					{onTogglePin || onOpenInSession ? (
 						<>
 							{onTogglePin ? (
@@ -221,35 +254,43 @@ export function ArtifactActionsMenu({
 								<FolderOpen aria-hidden="true" />
 								{t("artifacts.showIn", { name: fileManagerName() })}
 							</DropdownMenuItem>
-							<DropdownMenuItem onSelect={() => reveal("terminal")}>
-								<SquareTerminal aria-hidden="true" />
-								{t("artifacts.showIn", { name: terminalName() })}
-							</DropdownMenuItem>
-							{copyable || session.cloud ? <DropdownMenuSeparator /> : null}
+							{!sidebar ? (
+								<>
+									<DropdownMenuItem onSelect={() => reveal("terminal")}>
+										<SquareTerminal aria-hidden="true" />
+										{t("artifacts.showIn", { name: terminalName() })}
+									</DropdownMenuItem>
+									{copyable || session.cloud ? <DropdownMenuSeparator /> : null}
+								</>
+							) : null}
 						</>
 					) : null}
-					{copyable ? (
+					{!sidebar && copyable ? (
 						<DropdownMenuItem onSelect={() => void copy()}>
 							<Copy aria-hidden="true" />
 							{t(markdown ? "artifacts.copyMarkdown" : "artifacts.copyContents")}
 						</DropdownMenuItem>
 					) : null}
-					{session.cloud ? (
-						<DropdownMenuItem onSelect={() => void download()}>
-							<Download aria-hidden="true" />
-							{t("artifacts.download")}
-						</DropdownMenuItem>
+					{!sidebar ? (
+						<>
+							{session.cloud ? (
+								<DropdownMenuItem onSelect={() => void download()}>
+									<Download aria-hidden="true" />
+									{t("artifacts.download")}
+								</DropdownMenuItem>
+							) : null}
+							{local || copyable || session.cloud ? <DropdownMenuSeparator /> : null}
+							<DropdownMenuItem
+								className="text-destructive focus:text-destructive [&_svg]:text-destructive focus:[&_svg]:text-destructive"
+								onSelect={confirmDelete}
+							>
+								<Trash2 aria-hidden="true" />
+								{t("artifacts.delete")}
+							</DropdownMenuItem>
+						</>
 					) : null}
-					{local || copyable || session.cloud ? <DropdownMenuSeparator /> : null}
-					<DropdownMenuItem
-						className="text-destructive focus:text-destructive [&_svg]:text-destructive focus:[&_svg]:text-destructive"
-						onSelect={confirmDelete}
-					>
-						<Trash2 aria-hidden="true" />
-						{t("artifacts.delete")}
-					</DropdownMenuItem>
 				</DropdownMenuContent>
-			</DropdownMenu>
+			</DropdownMenu> : null}
 			<ConfirmDialog
 				busy={remove.isPending}
 				confirmLabel={t("artifacts.delete")}
