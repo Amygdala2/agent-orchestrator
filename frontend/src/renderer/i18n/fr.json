@@ -1,4 +1,7 @@
 {
+	"sideChat.closingTab": "Fermeture",
+	"sideChat.closing": "Fermeture du chat latéral. Il disparaîtra après confirmation.",
+	"sideChat.retryClose": "Réessayer la fermeture",
 	"awake.stopReason.low_battery": "Arrêté car la batterie a atteint le seuil de sécurité configuré. Rechargez votre Mac, puis désactivez et réactivez Stay Awake pour le relancer.",
 	"awake.stopReason.critical_heat": "Arrêté car le Mac doit refroidir. Une fois refroidi, désactivez et réactivez Stay Awake pour le relancer.",
 	"awake.stopReason.battery_unknown": "Arrêté car l’état de la batterie n’a pas pu être lu. Désactivez et réactivez Stay Awake pour réessayer.",
@@ -3447,6 +3450,9 @@
 	"sideChat.noneOpen": "Aucune conversation annexe ouverte",
 	"sideChat.retryConnection": "Retry connection",
 	"sideChat.deliveryIsUnconfirmedRetryTheOriginalQuestionBeforeSendingAnother": "Delivery is unconfirmed. Retry the original question before sending another.",
+	"sideChat.cancelHandoff": "Cancel handoff",
+	"sideChat.finishCancellation": "Finish cancelling",
+	"sideChat.cancelHandoffHelp": "Cancelling stops retries and keeps your current draft. The question may already have reached its destination.",
 	"sideChat.retryDelivery": "Retry delivery",
 	"sideChat.sideChatIsUnavailable": "Side chat is unavailable",
 	"sideChat.openingSideChat": "Opening side chat…",
