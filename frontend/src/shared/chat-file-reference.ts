@@ -74,6 +74,11 @@ export function captureFileReference(selection: FileCodeReference, sessionId: st
 	};
 }
 
+/** A File-view capture keeps side "old" to name its historical revision, but its rows are marked "file". */
+export function isFileViewCapture(ref: Pick<ChatFileReference, "side" | "lines">): boolean {
+	return ref.side === "file" || (ref.lines.length > 0 && ref.lines.every((row) => row.side === "file"));
+}
+
 export function fileReferenceLabel(ref: ChatFileReference): string {
 	const name = ref.path.split("/").at(-1) ?? ref.path;
 	const side = ref.endSide && ref.endSide !== ref.side ? `${ref.side} → ${ref.endSide}` : ref.side;
@@ -82,3 +87,18 @@ export function fileReferenceLabel(ref: ChatFileReference): string {
 export function fileReferencePreview(ref: ChatFileReference): string {
 	return ref.lines.map((row) => `${ref.side === "file" ? "" : row.kind === "add" ? "+" : row.kind === "del" ? "-" : " "}${row.text}`).join("\n");
 }
+
+export interface FileAnnotationRange extends Pick<ChatFileReference, "line" | "endLine" | "side" | "lines"> {
+	requestKey: number;
+}
+export interface FileAnnotationResolution {
+	state: "unchanged" | "changed" | "unavailable" | "moved";
+	reason?: string;
+	path?: string;
+	line?: number;
+	endLine?: number;
+	side?: string;
+	oldLineOffset?: number;
+	newLineOffset?: number;
+}
+export type OpenFileAnnotation = (reference: ChatFileReference, resolution: FileAnnotationResolution) => void;
