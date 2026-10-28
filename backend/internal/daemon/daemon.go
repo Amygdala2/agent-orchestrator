@@ -680,7 +680,7 @@ func Run(buildVersion string) error {
 		Reviewers:                 store,
 		DisableUpdateChecks:       !cfg.HarnessUpdateChecks,
 		DisableUpdateWhileRunning: !cfg.UpdateWhileRunning,
-		WindowsUpdateWhenIdle:     cfg.WindowsUpdateWhenIdle,
+		UpdateWhenIdle:            cfg.UpdateWhenIdle,
 		ManagedRoot:               managedHarnessRoot(cfg),
 		Releases:                  store,
 		PrivateNPMPrefixes:        privateNPMPrefixes,
