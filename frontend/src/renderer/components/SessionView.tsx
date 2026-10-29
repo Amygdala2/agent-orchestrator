@@ -1487,7 +1487,10 @@ export function SessionView({ sessionId, cloudOrgId, projectId, hostId }: Sessio
 	// A local session's tab menu holds the interface switch and, in a terminal, its agent; Cloud cannot switch agent.
 	const agentWorking = chatDraftBoundaries.length > 0 || session?.isTerminated === true ||
 		session?.activity?.state === "active" || session?.activity?.state === "waiting_input" || session?.activity?.state === "blocked";
-	const sessionTabActions = !session || session.cloud
+	// SessionTabMenu renders nothing without a switch or an agent picker; pass no
+	// action then, so the tab keeps its avatar on hover.
+	const sessionTabMenuEmpty = !interfaceUi.switchAction && !interfaceUi.switchControl && interfaceUi.target !== "chat";
+	const sessionTabActions = !session || session.cloud || sessionTabMenuEmpty
 		? (session?.cloud ? interfaceUi.switchControl : null)
 		: (
 			<SessionTabMenu
@@ -1518,7 +1521,8 @@ export function SessionView({ sessionId, cloudOrgId, projectId, hostId }: Sessio
 			<ShellTopbar embedded />
 		</div>
 	);
-	const sessionTabActionWide = false;
+	// While an interface switch runs, its status replaces the tab menu and stays visible.
+	const sessionTabActionPinned = Boolean(interfaceUi.switchControl && !interfaceUi.switchAction);
 
 	// The pane shows one terminal at a time, so selecting a shell or the reviewer
 	// takes the agent's terminal off screen while the route still points here.
@@ -2019,7 +2023,7 @@ export function SessionView({ sessionId, cloudOrgId, projectId, hostId }: Sessio
 									theme={theme}
 									headerActions={sessionHeaderActions}
 									sessionTabAction={sessionTabActions}
-									sessionTabActionWide={sessionTabActionWide}
+									sessionTabActionPinned={sessionTabActionPinned}
 									tabStripAction={newShellTerminalAction}
 									workspaceTabs={centerFileTabs}
 									workspaceActiveTabKey={activeWorkspaceTabKey}
@@ -2084,7 +2088,7 @@ export function SessionView({ sessionId, cloudOrgId, projectId, hostId }: Sessio
 									theme={theme}
 									topbarActions={sessionHeaderActions}
 									sessionTabAction={sessionTabActions}
-									sessionTabActionWide={sessionTabActionWide}
+									sessionTabActionPinned={sessionTabActionPinned}
 									tabStripAction={newShellTerminalAction}
 									workspaceTabs={centerFileTabs}
 									workspaceActiveTabKey={activeWorkspaceTabKey}
