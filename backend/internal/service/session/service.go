@@ -600,14 +600,17 @@ func (s *Service) emitSpawnFailed(ctx context.Context, cfg ports.SpawnConfig, er
 	})
 }
 
-// captureRelaunchError sends a relaunch failure's raw error to Sentry.
-var captureRelaunchError = sentryobs.CaptureHTTPError
+// captureRelaunchError sends a relaunch failure through the daemon's gated,
+// privacy-safe Sentry boundary.
+var captureRelaunchError = func(ctx context.Context, err error, tags map[string]string, fingerprint string) {
+	sentryobs.CaptureError(ctx, err, tags, fingerprint, telemetrymeta.RoutePattern(nil), telemetrymeta.FailureSite{})
+}
 
 // emitRelaunchFailed records a failed agent relaunch. These answer 409
 // AGENT_RESUME_FAILED rather than 500, so neither ao.http.5xx nor the request
 // logger's Sentry capture sees them any more. PostHog gets the operation, step
 // and the root error's Go type (never its text, which can carry paths and env);
-// Sentry, which scrubs events, gets the raw error the 500 used to carry.
+// Sentry receives only fixed diagnostics after scrubbing the raw error.
 func (s *Service) emitRelaunchFailed(ctx context.Context, operation string, id domain.SessionID, err, mapped error) {
 	var relaunchErr *sessionmanager.RelaunchError
 	var apiErr *apierr.Error
@@ -635,7 +638,7 @@ func (s *Service) emitRelaunchFailed(ctx context.Context, operation string, id d
 		payload["kind"] = string(rec.Kind)
 		projectID = &rec.ProjectID
 	}
-	tags := map[string]string{"request_id": reqid.FromContext(ctx)}
+	tags := map[string]string{"area": "agent"}
 	for key, value := range payload {
 		tags[key] = fmt.Sprint(value)
 	}

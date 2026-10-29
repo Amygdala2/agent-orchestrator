@@ -31,10 +31,10 @@ import (
 // envelope.WriteError: the wire envelope hides internals ("Internal server
 // error"), so without this the cause of a 500 was lost entirely.
 func requestLogger(log *slog.Logger, sink ports.EventSink) func(http.Handler) http.Handler {
-	return requestLoggerWithCapture(log, sink, sentryobs.CaptureHTTPError)
+	return requestLoggerWithCapture(log, sink, sentryobs.CaptureError)
 }
 
-type captureHTTPErrorFunc func(context.Context, error, map[string]string, string)
+type captureHTTPErrorFunc func(context.Context, error, map[string]string, string, telemetrymeta.SafeRoute, telemetrymeta.FailureSite)
 
 func requestLoggerWithCapture(log *slog.Logger, sink ports.EventSink, captureHTTPError captureHTTPErrorFunc) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -58,7 +58,8 @@ func requestLoggerWithCapture(log *slog.Logger, sink ports.EventSink, captureHTT
 				}
 				log.Info("http request", attrs...)
 				if ww.Status() >= http.StatusInternalServerError {
-					path := telemetrymeta.RoutePattern(r)
+					route := telemetrymeta.RoutePattern(r)
+					path := route.String()
 					capErr := captured.Err
 					var errorKind, errorCode string
 					if capErr != nil {
@@ -71,8 +72,8 @@ func requestLoggerWithCapture(log *slog.Logger, sink ports.EventSink, captureHTT
 					if errorCode == "CODEX_ACCOUNT_MANAGEMENT_UNAVAILABLE" {
 						return
 					}
-					// Same grouping key for PostHog and Sentry so an issue lines up
-					// across both.
+					// PostHog groups by route and error category. Sentry uses the
+					// recorded AO failure site when one is available.
 					fingerprint := telemetrymeta.Fingerprint("httpd", "http_request", r.Method, path, strconv.Itoa(ww.Status()), errorKind, errorCode)
 					if sink != nil {
 						payload := map[string]any{
@@ -116,9 +117,14 @@ func requestLoggerWithCapture(log *slog.Logger, sink ports.EventSink, captureHTT
 							Payload:    payload,
 						})
 					}
-					// Capture genuine faults to Sentry with the real error/stack.
+					// Sentry keeps safe diagnostic fields and stack frames, but
+					// replaces error text before sending.
 					// 503 (transient contention) is excluded by ShouldCaptureStatus.
-					if sentryobs.ShouldCaptureStatus(ww.Status()) {
+					captureSentry := sentryobs.ShouldCaptureStatus(ww.Status())
+					if errorCode == "LINK_PREVIEW_FETCH_FAILED" && ww.Status() == http.StatusBadGateway {
+						captureSentry = false
+					}
+					if captureSentry {
 						err := capErr
 						if err == nil {
 							err = fmt.Errorf("HTTP %d %s %s", ww.Status(), r.Method, path)
@@ -132,8 +138,8 @@ func requestLoggerWithCapture(log *slog.Logger, sink ports.EventSink, captureHTT
 							"category":   "http_5xx",
 							"error_kind": errorKind,
 							"error_code": errorCode,
-							"request_id": middleware.GetReqID(r.Context()),
-						}, fingerprint)
+							"area":       sentryobs.Area(capErr, errorCode),
+						}, fingerprint, route, captured.FailureSite)
 					}
 				}
 			}()
