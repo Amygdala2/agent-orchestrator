@@ -1,6 +1,6 @@
 // Package sentryobs is the daemon-side Sentry integration. It captures genuine
-// server faults (5xx and panics) with their Go stack, grouped by the AO
-// function that recorded the failure when that site is available. It is the
+// server faults (5xx and panics) with their Go stack, grouped by the caller's
+// stable fingerprint. It is the
 // surface where the daemon's INTERNAL_ERROR 500 root causes
 // finally get a stack instead of an opaque count.
 //
@@ -14,11 +14,13 @@ package sentryobs
 import (
 	"context"
 	"errors"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
 	"regexp"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -57,6 +59,7 @@ var operationLabels = map[string]string{
 	"http_request_panic": "http handler panic",
 	"resume_agent":       "Agent resume failed",
 	"restore_session":    "Session restore failed",
+	"background_panic":   "daemon background panic",
 }
 
 var areaLabels = map[string]string{
@@ -74,6 +77,7 @@ var relaunchSteps = map[string]struct{}{
 	"supervisor": {}, "runtime preparation": {}, "prepare launch": {},
 	"controller admission": {}, "runtime": {}, "agent start check": {},
 	"record launch": {}, "native initialization": {}, "deliver prompt": {},
+	"workspace roots": {}, "provider ownership": {}, "chat start": {},
 }
 
 // Only literal codes used for reportable daemon errors belong here. A new
@@ -328,7 +332,7 @@ func safeSentryTag(key, value string) bool {
 	case "platform":
 		return value == "daemon"
 	case "component":
-		return value == "httpd" || value == "session_service"
+		return value == "httpd" || value == "session_service" || value == "daemon"
 	case "operation":
 		_, ok := operationLabels[value]
 		return ok
@@ -379,8 +383,8 @@ func ShouldCaptureStatus(status int) bool {
 	return status >= http.StatusInternalServerError && status != http.StatusServiceUnavailable
 }
 
-// CaptureError captures a reportable daemon error with safe tags and a stable
-// AO failure-site fingerprint when available. No-op when disabled or canceled.
+// CaptureError captures a reportable daemon error with safe tags and the
+// caller's stable fingerprint. No-op when disabled or canceled.
 func CaptureError(ctx context.Context, err error, tags map[string]string, fingerprint string, route telemetrymeta.SafeRoute, site telemetrymeta.FailureSite) {
 	if err == nil || errors.Is(err, context.Canceled) || ctx.Err() != nil || !enterCapture() {
 		return
@@ -398,33 +402,46 @@ func CapturePanic(ctx context.Context, tags map[string]string, fingerprint strin
 	capture(sentry.LevelFatal, tags, fingerprint, route, site)
 }
 
+// RecoverBackground reports a panic without sending its value to Sentry, then
+// preserves the daemon's crash-on-panic behavior. Defer it at the goroutine entry.
+func RecoverBackground() {
+	rec := recover()
+	if rec == nil {
+		return
+	}
+	site := telemetrymeta.CurrentFailureSite()
+	kind := telemetrymeta.PanicKind(rec)
+	log.Printf("daemon background panic: %v\n%s", rec, debug.Stack())
+	CapturePanic(context.Background(), map[string]string{
+		"component":  "daemon",
+		"operation":  "background_panic",
+		"panic_kind": kind,
+	}, telemetrymeta.Fingerprint("daemon", "background_panic", site.String(), kind), telemetrymeta.SafeRoute{}, site)
+	panic(rec)
+}
+
 func capture(level sentry.Level, tags map[string]string, fingerprint string, route telemetrymeta.SafeRoute, site telemetrymeta.FailureSite) {
 	sentry.WithScope(func(scope *sentry.Scope) {
 		scope.SetLevel(level)
 		applyTags(scope, tags, route)
-		group := fingerprint
-		if site.String() != "" {
-			parts := []string{"sentry", tags["operation"], site.String()}
-			if level == sentry.LevelError {
-				parts = append(parts, tags["error_code"])
-			}
-			group = telemetrymeta.Fingerprint(parts...)
-		}
-		if group != "" {
-			scope.SetFingerprint([]string{group})
+		if fingerprint != "" {
+			scope.SetFingerprint([]string{fingerprint})
 		}
 		event := sentry.NewEvent()
 		event.Level = level
-		event.Exception = []sentry.Exception{{Stacktrace: stackAtSite(site)}}
+		event.Exception = []sentry.Exception{{Stacktrace: stackAtSite(site, tags["operation"])}}
 		sentry.CaptureEvent(event)
 	})
 }
 
-func stackAtSite(site telemetrymeta.FailureSite) *sentry.Stacktrace {
+func stackAtSite(site telemetrymeta.FailureSite, operation string) *sentry.Stacktrace {
 	if site.String() != "" {
 		return &sentry.Stacktrace{Frames: []sentry.Frame{{Function: site.String(), Lineno: site.Line(), InApp: true}}}
 	}
-	return sentry.NewStacktrace()
+	if _, ok := operationLabels[operation]; !ok {
+		operation = "unknown"
+	}
+	return &sentry.Stacktrace{Frames: []sentry.Frame{{Function: "ao.daemon." + operation, InApp: true}}}
 }
 
 func applyTags(scope *sentry.Scope, tags map[string]string, route telemetrymeta.SafeRoute) {

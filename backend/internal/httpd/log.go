@@ -72,9 +72,18 @@ func requestLoggerWithCapture(log *slog.Logger, sink ports.EventSink, captureHTT
 					if errorCode == "CODEX_ACCOUNT_MANAGEMENT_UNAVAILABLE" {
 						return
 					}
-					// PostHog groups by route and error category. Sentry uses the
-					// recorded AO failure site when one is available.
-					fingerprint := telemetrymeta.Fingerprint("httpd", "http_request", r.Method, path, strconv.Itoa(ww.Status()), errorKind, errorCode)
+					// Group the same error code at a registered route together even
+					// when several controller functions can produce it. The caller
+					// frame remains available separately as the Sentry culprit.
+					groupCode := errorCode
+					if groupCode == "" {
+						groupCode = errorKind
+					}
+					if groupCode == "" {
+						groupCode = strconv.Itoa(ww.Status())
+					}
+					sentryFingerprint := telemetrymeta.Fingerprint("httpd", "http_request", r.Method, path, groupCode)
+					posthogFingerprint := telemetrymeta.Fingerprint("httpd", "http_request", r.Method, path, strconv.Itoa(ww.Status()), errorKind, errorCode)
 					if sink != nil {
 						payload := map[string]any{
 							"component":     "httpd",
@@ -90,7 +99,7 @@ func requestLoggerWithCapture(log *slog.Logger, sink ports.EventSink, captureHTT
 							if errorCode != "" {
 								payload["error_code"] = errorCode
 							}
-							payload["fingerprint"] = fingerprint
+							payload["fingerprint"] = posthogFingerprint
 						}
 						for key, value := range captured.Fields {
 							payload[key] = value
@@ -139,7 +148,7 @@ func requestLoggerWithCapture(log *slog.Logger, sink ports.EventSink, captureHTT
 							"error_kind": errorKind,
 							"error_code": errorCode,
 							"area":       sentryobs.Area(capErr, errorCode),
-						}, fingerprint, route, captured.FailureSite)
+						}, sentryFingerprint, route, captured.FailureSite)
 					}
 				}
 			}()

@@ -16,6 +16,35 @@ packaged desktop release also enables telemetry for the daemon it starts.
 Development builds and daemons started directly do not send remote telemetry by
 default.
 
+## Sentry projects
+
+The packaged desktop app gives its spawned Go daemon the daemon Sentry project
+DSN through `AO_SENTRY_DSN`. An explicit `AO_SENTRY_DSN` value takes precedence;
+without one, development builds hand the daemon an empty value. Daemon error
+reporting remains subject to the existing Share error events control.
+
+Electron main and the renderer have a separate desktop Sentry project. Their
+default DSN is distinct from the daemon project; Electron main uses
+`AO_ELECTRON_SENTRY_DSN` for an explicit override. Without one, development
+builds use an empty Electron DSN. The renderer uses this main-owned sender
+and has no independent DSN override. The production release gate remains
+closed until the privacy policy names Sentry and its data categories.
+Once that gate opens, Electron main sends consented error events through its
+own Sentry transport.
+Renderer diagnostics pass through the existing main-owned consent boundary;
+the renderer has no direct Sentry transport. The mobile app keeps its own
+Sentry project and DSN. A desktop opt-in recorded while the Electron release
+gate was closed requires a fresh opt-in before this sender starts.
+Once enabled, renderer exceptions go to Electron Sentry rather than PostHog. Failed
+Sentry sends can wait in an offline queue under AO's Electron data directory.
+Error events can include a standard exception type and allowlisted in-app
+function names and line numbers. Stack paths and raw exception messages are
+removed before sending.
+Turning off Share error events drains the sender and removes that queue before
+the opt-out is complete. If the app exits during that cleanup, startup purges
+the leftover queue while sharing is off, before a later opt-in can start the
+sender.
+
 ## What Orchestrator.inc sends
 
 Orchestrator.inc sends structured events in a few broad categories:
@@ -302,14 +331,19 @@ sent to PostHog is not deleted.
 
 The **Share error events** control on the same page covers error diagnostics
 only: the daemon's Sentry capture of reportable 5xx errors, failed agent
-relaunches answered as 409 `AGENT_RESUME_FAILED`, and panics. Sentry
+relaunches answered as 409 `AGENT_RESUME_FAILED`, and handler or background
+goroutine panics; and Electron main capture of process crashes, uncaught
+exceptions, unhandled rejections, and reportable renderer errors. Sentry
 receives fixed failure or panic labels and allowlisted error codes instead of
-raw error messages. It groups HTTP faults by the AO function that recorded the
-failure when available. Agent relaunches group by operation and failure step,
-with a fixed step tag and no HTTP route tag.
+raw error messages. It groups HTTP faults by registered route and error code,
+while retaining the AO function that recorded the failure as the culprit.
+Agent relaunches group by operation and failure step, with a fixed step tag
+and no HTTP route tag.
 An event may include a bounded `git`, `db`, `agent`, or `network` area when the
 error provides evidence. It keeps stack function and line information, but
-removes stack paths, request data, and panic text.
+removes stack paths, request data, project, session, repository and branch
+names, and panic text. Electron events use fixed titles and scrubbed exception
+values with the same installation ID as Sentry `user.id`.
 Canceled requests, transient 503 responses, and expected upstream link-preview
 502 responses do not create Sentry issues. Registered route templates remain
 available for diagnosis. Unmatched URLs are reported as `unmatched` instead of

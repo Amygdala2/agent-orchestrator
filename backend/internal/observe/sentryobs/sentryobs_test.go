@@ -199,7 +199,7 @@ func TestCaptureBoundaryKeepsDiagnosticsWithoutUserNames(t *testing.T) {
 	if event.User.ID != "ins_stable" || event.Release == "" || event.Environment == "" {
 		t.Fatalf("panic lost Sentry identity or build context: %+v", event)
 	}
-	if len(event.Fingerprint) != 1 || event.Fingerprint[0] != telemetrymeta.Fingerprint("sentry", "http_request_panic", panicSite.String()) || event.Exception[0].Stacktrace.Frames[0].Function != panicSite.String() {
+	if len(event.Fingerprint) != 1 || event.Fingerprint[0] != "fedcba9876543210" || event.Exception[0].Stacktrace.Frames[0].Function != panicSite.String() {
 		t.Fatalf("panic did not group at AO failure site: %+v", event)
 	}
 	encoded, err := event.MarshalJSON()
@@ -300,9 +300,9 @@ func TestCaptureBoundaryUsesFailureSiteAndFixedAreaLabel(t *testing.T) {
 	if event.Message != "Git operation failed (WORKSPACE_GIT_READ_FAILED)" || event.Tags["area"] != "git" {
 		t.Fatalf("fixed diagnostics lost: %+v", event)
 	}
-	wantGroup := telemetrymeta.Fingerprint("sentry", "http_request", site.String(), "WORKSPACE_GIT_READ_FAILED")
+	wantGroup := "0123456789abcdef"
 	if len(event.Fingerprint) != 1 || event.Fingerprint[0] != wantGroup {
-		t.Fatalf("failure-site fingerprint = %v, want %q", event.Fingerprint, wantGroup)
+		t.Fatalf("route and code fingerprint = %v, want %q", event.Fingerprint, wantGroup)
 	}
 	frames := event.Exception[0].Stacktrace.Frames
 	if len(frames) != 1 || frames[0].Function != site.String() || frames[0].Lineno != site.Line() || strings.Contains(frames[0].Function, "sentryobs.CaptureError") {
@@ -317,6 +317,50 @@ func TestCaptureBoundaryUsesFailureSiteAndFixedAreaLabel(t *testing.T) {
 	select {
 	case event := <-transport.events:
 		t.Fatalf("canceled request captured: %+v", event)
+	default:
+	}
+}
+
+func TestRecoverBackgroundReportsSanitizedPanicUnderConsent(t *testing.T) {
+	transport := &recordingTransport{events: make(chan *sentry.Event, 1)}
+	if err := Init(Config{DSN: "https://public@example.com/1", InstallID: "ins_stable", Transport: transport}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { SetPolicyEnabled(false); enabled.Store(false) })
+	SetPolicyEnabled(true)
+	assertRepanic := func(value string) {
+		t.Helper()
+		func() {
+			defer func() {
+				if got := recover(); got != value {
+					t.Fatalf("background panic = %v, want %q", got, value)
+				}
+			}()
+			defer RecoverBackground()
+			panic(value)
+		}()
+	}
+	assertRepanic("resume agent ai-sports-coach-113")
+	select {
+	case event := <-transport.events:
+		if event.Message != "daemon background panic" || event.User.ID != "ins_stable" || event.Tags["panic_kind"] != "string" {
+			t.Fatalf("background panic metadata = %+v", event)
+		}
+		if len(event.Fingerprint) != 1 || len(event.Exception) != 1 || len(event.Exception[0].Stacktrace.Frames) != 1 || strings.Contains(event.Exception[0].Stacktrace.Frames[0].Function, "sentryobs.RecoverBackground") {
+			t.Fatalf("background panic grouping or culprit = %+v", event)
+		}
+		encoded, err := event.MarshalJSON()
+		if err != nil || strings.Contains(string(encoded), "ai-sports-coach-113") {
+			t.Fatalf("background panic leaked private value: %s, error: %v", encoded, err)
+		}
+	default:
+		t.Fatal("background panic was not captured")
+	}
+	SetPolicyEnabled(false)
+	assertRepanic("private branch")
+	select {
+	case event := <-transport.events:
+		t.Fatalf("opted out background panic was captured: %+v", event)
 	default:
 	}
 }
@@ -338,6 +382,11 @@ func TestSentryTagRules(t *testing.T) {
 	}
 	if !safeSentryTag("step", "runtime") || safeSentryTag("step", "PrivateProjectOrSession_Z9") || safeSentryTag("area", "update") {
 		t.Fatal("step or area tag accepted a dynamic or unsupported value")
+	}
+	for _, step := range []string{"workspace roots", "provider ownership", "chat start"} {
+		if !safeSentryTag("step", step) {
+			t.Fatalf("fixed chat relaunch step %q was dropped", step)
+		}
 	}
 }
 
