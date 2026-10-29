@@ -108,6 +108,68 @@ in plain text. These identifiers are distinct from the explicit GitHub account
 attribution on session-start events, but events that share an installation
 identifier can still be associated with that attribution in PostHog.
 
+## Usage counts by project
+
+The daemon sends three usage summaries when remote product telemetry is enabled:
+
+| Event | What is counted |
+| --- | --- |
+| `ao.usage.messages_sent` | New, direct human Chat messages accepted into a session. One count per accepted message. |
+| `ao.usage.worker_pr_associated` | A provider PR first associated with an AO worker session. This is not proof the worker created the PR. |
+| `ao.usage.worker_pr_merged` | An associated worker PR first observed as merged. |
+
+The project grouping value, `project_telemetry_id`, is a random UUID persisted
+locally for each project and installation. It is not a hash of a repository,
+project name, path, or content. A different installation gets a different value
+for the same repository. The daemon does not send the local project ID, PR URL,
+PR title, repository, branch, or message content in these events. Message
+summaries also carry a `session_telemetry_id` derived from the random project
+value and the local session ID. It groups batches from one session on this
+installation without making the local session ID available remotely. The
+usual `install_id` and signed-in account attribution still apply.
+
+The message count covers project Chat messages that have a human origin and no
+sending worker. Standalone sessions have no project grouping and are excluded.
+It includes a newly queued direct message but excludes opening prompts delivered
+during session creation, repeated client requests, retries or replays of an
+existing prompt, reviewer Chat, worker
+automation sent into another session, provider messages, tool calls, and
+terminal input in TUI sessions. Counts are stored per session without content.
+They flush about every 30 minutes, when a session is archived, when the
+desktop app exits, and when the daemon stops. The first flush runs in the
+background after daemon startup. Pending counts survive a daemon restart.
+A summary is reserved before entering the existing best-effort remote queue.
+Usage events wait for PostHog queue capacity rather than being dropped when
+the buffer is full. A crash, caller cancellation, or export failure after
+reservation can still lose a batch; it will not duplicate the count on restart.
+An identity persistence failure pauses draining without discarding pending
+counts. Only an actual user opt-out discards them.
+If remote events are configured but the PostHog sink cannot start, the daemon
+keeps new usage counts locally and leaves them pending until a later start with
+a working sink.
+The remote sink has a 100,000 event per name per daemon process per rolling
+24-hour window emergency cap for these summaries. Events beyond that cap are
+dropped after reservation, so their counts cannot be recovered from the local
+summary.
+
+PR counts use the provider PR associated with a worker in AO's durable PR
+table, not a session spawn or provider poll. One local provider identity is
+counted once even if ownership moves between workers. Orchestrator-owned PRs
+are excluded. Repeated observations do not add counts. A PR already associated
+with a worker when this measurement is first installed contributes one
+association count, and an already merged PR also contributes one merged
+count. Both carry `historical: true`; newly observed associations and merges
+carry `historical: false`. Counts are grouped per project at each full flush,
+about every 30 minutes and at daemon or desktop shutdown. The one-minute
+archive pass skips the PR scan.
+PRs and messages accepted while product telemetry is off are not exported
+after a later opt-in.
+If events export is disabled in configuration when this version first runs,
+backfilled worker PR associations that have not been observed again remain
+eligible for historical export if events export is enabled later. An observation
+while export is disabled marks that association reported locally. Explicit
+product telemetry opt-out discards pending associations before export.
+
 ## Automation usage and creation
 
 When desktop product telemetry is enabled, Orchestrator.inc records visits to the
