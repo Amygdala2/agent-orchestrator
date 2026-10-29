@@ -92,6 +92,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cloud/v1/orgs/{orgId}/providers/{agent}/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: components["parameters"]["OrgId"];
+                agent: "claude-code" | "codex" | "cursor" | "opencode";
+            };
+            cookie?: never;
+        };
+        /** @description The models and reasoning efforts a new Cloud task for this agent runs with, for the authenticated user in this organization. The list is what the next task's worker runs, not a suggestion, and needs no live worker: `source` says whether a Cloud worker running the same CLI version with the user's current credential reported it, or it is the list the control plane's pinned CLI version supports. A task that names no model keeps the project's or the agent's default. A listed model without `efforts` takes no reasoning effort; every model that takes one lists its levels. */
+        get: operations["listUserAgentModels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/cloud/v1/github/user": {
         parameters: {
             query?: never;
@@ -2992,6 +3012,15 @@ export interface components {
         };
         ChatModelsResponse: {
             models: components["schemas"]["ChatModel"][];
+            /**
+             * @description Where the list came from. worker: reported by a Cloud worker running this CLI version with the user's current credential. release: the models the control plane's pinned CLI version supports.
+             * @enum {string}
+             */
+            source?: "worker" | "release";
+            /** @description The harness CLI version the list is for. */
+            cliVersion?: string;
+            /** @description On a session's list, true when its worker listed the models for the signed-in account rather than from the CLI's built-in list. Only such a list becomes the user's catalog. */
+            accountListed?: boolean;
         };
         SendMessageInput: {
             text: string;
@@ -4347,6 +4376,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listUserAgentModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: components["parameters"]["OrgId"];
+                agent: "claude-code" | "codex" | "cursor" | "opencode";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The model catalog for the next task. It lists at least one model. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatModelsResponse"];
+                };
+            };
+            /** @description MODEL_CATALOG_UNAVAILABLE. This agent has no Cloud model catalog. Clients keep the agent's own model discovery where it has one, or offer the native default and manual model entry. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
             };
             default: components["responses"]["Error"];
         };
